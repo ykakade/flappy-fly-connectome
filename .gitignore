@@ -1,0 +1,17 @@
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+data/cache/
+*.feather
+*.part
+.env
+.env.*
+!.env.example
+.sites-runtime/
+.openai/*token*
+node_modules/
+.DS_Store

@@ -1,0 +1,10 @@
+{
+  "kind": "graph",
+  "steps": 4096,
+  "seed": 42,
+  "envs": 32,
+  "rollout": 128,
+  "epochs": 4,
+  "max_frames": 3600,
+  "command": "python -m flappy_fly.train --steps 4096 --out checkpoints/smoke"
+}

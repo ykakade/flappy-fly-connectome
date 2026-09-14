@@ -1,0 +1,13 @@
+{
+  "verified_on": "2026-09-13",
+  "official_downloads": "Both official Feather tables downloaded and matched publisher MD5/size; immutable generations and local SHA256 recorded in data/dataset.json",
+  "real_data_preprocessing": "211577 annotation records and 151856684 directed segment-pair rows inspected; retained graph produced by scripts, preserving original IDs, annotations and counts",
+  "python_tests": "12 passed; headless physics, real graph integrity, shuffled degree/parameter matching, exact environment parity, checkpoint restoration, deterministic evaluation, exact training resume, browser inference parity",
+  "javascript_tests": "3 passed; all 288 evaluation episodes reproduce score and survival frame in JavaScript",
+  "frontend_build": "npm run build passed",
+  "lint": "ruff check and JavaScript syntax checks passed",
+  "isolated_browser": "Fresh headless Chrome context: all five modes, live 96-neuron activations, checkpoint selection, lesion, keyboard, pointer/touch event, restart, seed changes; no page errors",
+  "responsive_layout": "1440x1100 and 390x844 tested, no mobile horizontal overflow; desktop/mobile screenshots visually inspected",
+  "webmcp": "Both tools registered; valid configuration and readback verified; invalid mode rejected with state preserved",
+  "publication": "See live deployment status and GitHub Actions for current hosted/fresh-checkout verification"
+}

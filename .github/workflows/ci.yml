@@ -1,0 +1,24 @@
+name: Verify Flappy Fly
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: pip install -e '.[dev]'
+      - name: Python lint
+        run: ruff check .
+      - name: Physics parity, real graph loading, checkpoint restoration and exact resume
+        run: pytest -q
+      - name: Frontend validation
+        run: npm run lint && npm run build
+      - name: Deterministic browser inference and complete evaluation replay
+        run: npm test

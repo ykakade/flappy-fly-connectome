@@ -1,0 +1,53 @@
+[
+  {
+    "kind": "graph",
+    "training_decisions": 2097152,
+    "wall_seconds": 276.7831849989889,
+    "hardware": {
+      "cpu_model": "Apple M1",
+      "platform": "macOS-26.2-arm64-arm-64bit-Mach-O",
+      "processor": "arm",
+      "machine": "arm64",
+      "device": "CPU",
+      "torch_threads": 1,
+      "torch_version": "2.14.0"
+    },
+    "seed": 42,
+    "parameters": 383,
+    "checkpoint": "checkpoints/graph/last.pt"
+  },
+  {
+    "kind": "shuffled",
+    "training_decisions": 2097152,
+    "wall_seconds": 273.7021368339774,
+    "hardware": {
+      "cpu_model": "Apple M1",
+      "platform": "macOS-26.2-arm64-arm-64bit-Mach-O",
+      "processor": "arm",
+      "machine": "arm64",
+      "device": "CPU",
+      "torch_threads": 1,
+      "torch_version": "2.14.0"
+    },
+    "seed": 42,
+    "parameters": 383,
+    "checkpoint": "checkpoints/shuffled/last.pt"
+  },
+  {
+    "kind": "mlp",
+    "training_decisions": 2097152,
+    "wall_seconds": 45.90861425100593,
+    "hardware": {
+      "cpu_model": "Apple M1",
+      "platform": "macOS-26.2-arm64-arm-64bit-Mach-O",
+      "processor": "arm",
+      "machine": "arm64",
+      "device": "CPU",
+      "torch_threads": 1,
+      "torch_version": "2.14.0"
+    },
+    "seed": 42,
+    "parameters": 380,
+    "checkpoint": "checkpoints/mlp/last.pt"
+  }
+]

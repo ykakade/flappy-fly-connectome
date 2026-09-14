@@ -1,0 +1,21 @@
+{
+  "training_seed": 42,
+  "topology_shuffle_seed": 77,
+  "random_weight_intervention_seed": 991,
+  "steps_per_architecture": 2097152,
+  "envs": 32,
+  "rollout": 128,
+  "epochs": 4,
+  "minibatch": 512,
+  "learning_rate": 0.0003,
+  "gamma": 0.99,
+  "gae_lambda": 0.95,
+  "ppo_clip": 0.2,
+  "entropy_coefficient": 0.005,
+  "value_coefficient": 0.5,
+  "max_frames": 3600,
+  "action_repeat": 4,
+  "validation_seeds": [9001, 9002, 9003, 9004, 9005, 9006, 9007, 9008],
+  "test_seed_start": 10001,
+  "test_episodes": 32
+}

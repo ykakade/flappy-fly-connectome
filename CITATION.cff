@@ -1,0 +1,29 @@
+cff-version: 1.2.0
+message: "If you use Flappy Fly, cite this software and the MaleCNS publication listed below."
+title: "Flappy Fly: A MaleCNS-connectome-derived controller experiment"
+type: software
+version: 0.1.0
+date-released: 2026-09-13
+authors:
+  - name: "Flappy Fly contributors"
+repository-code: "https://github.com/ykakade/flappy-fly-connectome"
+license: MIT
+references:
+  - type: article
+    title: "Sexual dimorphism in the complete connectome of the Drosophila male central nervous system"
+    doi: "10.1016/j.cell.2026.08.015"
+    year: 2026
+    journal: Cell
+  - type: blog
+    title: "A connectomics milestone: Mapping the complete male fruit fly brain"
+    authors:
+      - family-names: Januszewski
+        given-names: Michał
+      - family-names: Jain
+        given-names: Viren
+    url: "https://research.google/blog/a-connectomics-milestone-mapping-the-complete-male-fruit-fly-brain/"
+    date-published: 2026-09-03
+  - type: article
+    title: "Proximal Policy Optimization Algorithms"
+    doi: "10.48550/arXiv.1707.06347"
+    year: 2017

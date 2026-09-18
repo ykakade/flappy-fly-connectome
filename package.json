@@ -7,7 +7,7 @@
     "build": "node scripts/build.mjs",
     "dev": "python3 -m http.server 4173 --directory dist",
     "test": "node --test tests/browser.test.mjs",
-    "lint": "node --check dist/app.js && node --check dist/environment.js && node --check dist/controller.js"
+    "lint": "node --check dist/app.js && node --check dist/environment.js && node --check dist/controller.js && node --check dist/classic.js"
   },
   "engines": {
     "node": ">=20"

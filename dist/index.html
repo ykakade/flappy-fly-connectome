@@ -1,260 +1,68 @@
 <!doctype html>
 <html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <meta
-      name="description"
-      content="Can a neural controller constrained by real fruit fly wiring learn a flight game? Play, watch, and test the MaleCNS connectome experiment."
-    />
-    <title>Flappy Fly — The wiring experiment</title>
-    <link
-      rel="icon"
-      type="image/svg+xml"
-      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23172435'/%3E%3Cpath d='M8 23V8h17v4H12v4h10v4H12v3' fill='%23c5f376'/%3E%3C/svg%3E"
-    />
-    <link rel="stylesheet" href="style.css" />
-  </head>
-  <body>
-    <header>
-      <a class="brand" href="#"
-        ><span class="brandmark">ƒ</span>Flappy Fly<span class="edition"
-          >EXPERIMENT 001</span
-        ></a
-      >
-      <nav>
-        <a href="#science">How it works</a
-        ><a id="github" href="https://github.com/ykakade/flappy-fly-connectome"
-          >Source code ↗</a
-        >
-      </nav>
-    </header>
-    <main>
-      <div class="intro">
-        <div>
-          <p class="eyebrow">A CONNECTOME-DERIVED CONTROLLER EXPERIMENT</p>
-          <h1>Can fly wiring learn to fly?</h1>
-          <p>Play the game. Watch the controller. Change the connections.</p>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta name="description" content="Play Flappy Fly. Tap to flap, avoid the pipes, or watch a controller trained with fruit fly brain connections." />
+  <title>Flappy Fly</title>
+  <link rel="icon" type="image/png" href="assets/yellowbird-midflap.png" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body data-mode="play">
+  <header>
+    <a class="brand" href="./"><img src="assets/yellowbird-midflap.png" width="34" height="24" alt="" />Flappy Fly</a>
+    <nav aria-label="Main"><a href="#about">About</a><a href="https://github.com/ykakade/flappy-fly-connectome/tree/master">GitHub</a></nav>
+  </header>
+  <main>
+    <div class="intro"><h1>Tap to flap.</h1><p>Avoid the pipes and the ground.</p></div>
+    <div class="tabs" role="tablist" aria-label="Game mode">
+      <button id="tab-play" role="tab" aria-selected="true" aria-controls="workspace" data-mode="play">Play</button>
+      <button id="tab-watch" role="tab" aria-selected="false" aria-controls="workspace" tabindex="-1" data-mode="watch">Watch</button>
+      <button id="tab-versus" role="tab" aria-selected="false" aria-controls="workspace" tabindex="-1" data-mode="versus">You vs. computer</button>
+      <button id="tab-journey" role="tab" aria-selected="false" aria-controls="workspace" tabindex="-1" data-mode="journey">Training</button>
+      <button id="tab-lab" role="tab" aria-selected="false" aria-controls="workspace" tabindex="-1" data-mode="lab">Change the wiring</button>
+    </div>
+    <p id="mode-note" class="mode-note" hidden>These modes use the easier rules the controllers were trained on.</p>
+    <div class="workspace" id="workspace" role="tabpanel" aria-labelledby="tab-play">
+      <section class="arena" aria-label="Game">
+        <div class="arena-head"><span id="mode-label">Your turn</span><div><button id="sound" class="text-button" aria-pressed="true">Sound on</button><button id="reset" class="text-button">Restart</button></div></div>
+        <div class="game-wrap">
+          <canvas id="game" width="288" height="512" tabindex="0" aria-label="Flappy Fly. Press space or up arrow, click, or tap to flap. Avoid the pipes and ground."></canvas>
+          <div id="overlay">
+            <h2 class="sr-only">Get ready</h2>
+            <img id="ready-image" src="assets/message.png" width="184" height="267" alt="Get ready. Tap to flap." />
+            <img id="gameover-image" src="assets/gameover.png" width="192" height="42" alt="Game over" hidden />
+            <div id="end-card" hidden><span>Score <b id="end-score">0</b></span><span>Best <b id="end-best">0</b></span></div>
+            <p id="overlay-copy" hidden></p>
+            <button id="start" class="primary">Play</button>
+          </div>
+          <span class="sr-only" id="score-label">Score</span><span class="sr-only" id="score">0</span>
         </div>
-        <span class="dataset-tag"
-          >MaleCNS <b>v1.0</b><small>STATE-INPUT EXPERIMENT</small></span
-        >
-      </div>
-      <div class="tabs" role="tablist" aria-label="Experiment mode">
-        <button role="tab" aria-selected="true" data-mode="play">
-          01 <span>Play</span></button
-        ><button role="tab" aria-selected="false" data-mode="watch">
-          02 <span>Watch AI</span></button
-        ><button role="tab" aria-selected="false" data-mode="versus">
-          03 <span>Human vs. Fly</span></button
-        ><button role="tab" aria-selected="false" data-mode="journey">
-          04 <span>Training Journey</span></button
-        ><button role="tab" aria-selected="false" data-mode="lab">
-          05 <span>Ablation Lab</span>
-        </button>
-      </div>
-      <div class="workspace">
-        <section class="arena">
-          <div class="arena-head">
-            <span id="mode-label">HUMAN FLIGHT</span
-            ><label
-              >SEED
-              <input
-                id="seed"
-                type="number"
-                value="10001"
-                min="1"
-                max="4294967295"
-                aria-label="Obstacle seed" /></label
-            ><button id="reset" class="text-button">↻ Restart</button>
-          </div>
-          <div class="game-wrap">
-            <canvas
-              id="game"
-              width="960"
-              height="540"
-              tabindex="0"
-              aria-label="Flight game. Press space, click, or tap to flap."
-            ></canvas>
-            <div class="scoreboard">
-              <div>
-                <small id="score-label">SCORE</small
-                ><strong id="score">00</strong>
-              </div>
-              <div>
-                <small>BEST · THIS DEVICE</small><strong id="best">00</strong>
-              </div>
-            </div>
-            <div id="overlay">
-              <span class="eyebrow">YOUR TURN AT THE CONTROLS</span>
-              <h2>A small flap.<br />A big experiment.</h2>
-              <p>Guide your fruit fly through the gates.</p>
-              <button id="start" class="primary">
-                Start flying <span>↗</span>
-              </button>
-              <div class="hint"><kbd>SPACE</kbd> or click / tap to flap</div>
-            </div>
-            <div class="arena-caption">
-              <span>FLIGHT CHAMBER / 01</span><span>FIXED STEP · 60 Hz</span>
-            </div>
-          </div>
-          <div class="game-foot">
-            <span id="run-status">Ready for takeoff</span
-            ><span id="inference-label">Human control</span>
-          </div>
-        </section>
-        <aside class="instrument">
-          <div class="instrument-head">
-            <span class="eyebrow">INSIDE THE CONTROLLER</span
-            ><span class="live-tag" id="activity-status">IDLE</span>
-          </div>
-          <h2>Wiring, in action.</h2>
-          <p class="instrument-copy" id="activity-copy">
-            Controller activity will appear during AI flight. No synthetic
-            activity is displayed.
-          </p>
-          <canvas
-            id="neural"
-            width="480"
-            height="250"
-            aria-label="Actual graph node activations"
-          ></canvas>
-          <div class="activity-key">
-            <span>−1 <i></i> +1</span
-            ><span id="node-count">Verifying graph</span>
-          </div>
-          <div class="prob">
-            <span>Flap probability</span><b id="prob">—</b>
-          </div>
-          <div class="prob-track"><i id="prob-fill"></i></div>
-          <div class="controller-controls">
-            <label
-              >CONTROLLER<select id="checkpoint">
-                <option value="best">Best checkpoint</option>
-                <option value="early">Early training</option>
-                <option value="mid">Mid-training</option>
-                <option value="untrained">Untrained</option>
-                <option value="shuffled">Shuffled topology</option>
-                <option value="mlp">MLP baseline</option>
-              </select></label
-            ><label id="intervention-label" hidden
-              >INTERVENTION<select id="intervention">
-                <option value="none">Original connections</option>
-                <option value="lesion">Disable output-bound edges</option>
-                <option value="random">Random graph weights</option>
-                <option value="bypass">Bypass connectome</option>
-                <option value="shuffled">Trained shuffled topology</option>
-              </select></label
-            >
-          </div>
-          <dl>
-            <div>
-              <dt>Training steps</dt>
-              <dd id="steps">—</dd>
-            </div>
-            <div>
-              <dt>Evaluation mean</dt>
-              <dd id="eval">—</dd>
-            </div>
-            <div>
-              <dt>Graph connections</dt>
-              <dd id="edges">—</dd>
-            </div>
-          </dl>
-          <p class="fine" id="activity-note">
-            Activations are model values, not measured biological signals.
-          </p>
-        </aside>
-      </div>
-      <section id="comparison" hidden class="experiment-panel">
-        <h2 id="comparison-title">Same seed. Two flights.</h2>
-        <p id="comparison-description"></p>
-        <div id="comparison-results"></div>
-        <canvas
-          id="prob-chart"
-          width="1000"
-          height="180"
-          aria-label="Flap probabilities compared over time"
-        ></canvas>
+        <div class="game-foot"><span id="run-status" role="status">Space, click, or tap to flap</span><span>Best <b id="best">0</b></span></div>
+        <p id="inference-label" class="sr-only">Human control</p>
       </section>
-      <section id="results" class="results">
-        <div>
-          <p class="eyebrow">THE EVIDENCE</p>
-          <h2>Learning is a measured result.</h2>
-          <p id="result-summary">
-            The experiment is being prepared. No learning claim is made before
-            evaluation.
-          </p>
+      <aside class="instrument" hidden>
+        <div class="instrument-head"><h2>Inside the controller</h2><span class="live-tag" id="activity-status">Idle</span></div>
+        <p id="activity-copy">Watch the dots change as the computer decides when to flap.</p>
+        <canvas id="neural" width="480" height="250" aria-label="Controller activity. Each dot is one node."></canvas>
+        <div class="activity-key"><span>−1 <i></i> +1</span><span id="node-count">Loading</span></div>
+        <div class="prob"><span>Chance of a flap</span><b id="prob">N/A</b></div>
+        <div class="prob-track"><i id="prob-fill"></i></div>
+        <div class="controller-controls">
+          <label>Controller<select id="checkpoint"><option value="best">Trained fly wiring</option><option value="early">Early training</option><option value="mid">Later training</option><option value="untrained">Before training</option><option value="shuffled">Shuffled wiring</option><option value="mlp">Standard neural network</option></select></label>
+          <label id="intervention-label" hidden>Change<select id="intervention"><option value="none">Keep the original wiring</option><option value="lesion">Cut the output connections</option><option value="random">Randomize connection strengths</option><option value="bypass">Skip the wiring</option><option value="shuffled">Use trained shuffled wiring</option></select></label>
+          <label>Pipe layout<input id="seed" type="number" value="10001" min="1" max="4294967295" aria-label="Pipe layout seed" /></label>
         </div>
-        <div class="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Controller</th>
-                <th>Mean</th>
-                <th>Median</th>
-                <th>Std. dev.</th>
-                <th>Survival</th>
-              </tr>
-            </thead>
-            <tbody id="metrics-body">
-              <tr>
-                <td colspan="5">Evaluation pending</td>
-              </tr>
-            </tbody>
-          </table>
-          <p class="fine" id="eval-details"></p>
-        </div>
-      </section>
-      <section id="science" class="science">
-        <div class="section-title">
-          <p class="eyebrow">HOW IT WORKS</p>
-          <h2>Real connections.<br />Engineered behavior.</h2>
-        </div>
-        <div>
-          <article>
-            <span>01 / THE DATA</span>
-            <h3>A wiring diagram, not a brain simulation.</h3>
-            <p>
-              MaleCNS v1.0 maps the male fruit fly central nervous system.
-              Original neuron IDs become nodes; measured directed connection
-              strengths become edges. It is structural data, not biological
-              dynamics or learned plasticity.
-            </p>
-          </article>
-          <article>
-            <span>02 / THE CONTROLLER</span>
-            <h3>State in. Graph activity. Flap out.</h3>
-            <p id="graph-explanation">
-              Engineered adapters inject position, velocity, distance, gap
-              boundaries, and previous action into selected input nodes. Sparse
-              message passing follows fixed wiring; a learned readout produces a
-              flap probability. This controller does not see pixels.
-            </p>
-          </article>
-          <article>
-            <span>03 / THE QUESTION</span>
-            <h3>Does the wiring make a difference?</h3>
-            <p>
-              Identical unseen seeds compare the original graph with shuffled
-              wiring, an MLP, and interventions. These small experiments cannot
-              establish that biological wiring is superior, simulate
-              consciousness, or show a real fly playing a game.
-            </p>
-          </article>
-        </div>
-      </section>
-      <footer>
-        <p><b>Flappy Fly</b> · A connectome-derived controller experiment.</p>
-        <p>
-          Data: HHMI Janelia FlyEM, Cambridge, MRC LMB & Google Research.
-          <a href="https://male-cns.janelia.org/download/">MaleCNS v1.0 ↗</a> ·
-          <a href="https://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a
-          ><br />Subset selection and numerical transformations are
-          modifications. No endorsement implied.
-        </p>
-      </footer>
-    </main>
-    <script type="module" src="app.js"></script>
-  </body>
+        <p class="fine">The same number gives the same pipes.</p>
+        <dl><div><dt>Training steps</dt><dd id="steps">N/A</dd></div><div><dt>Average score</dt><dd id="eval">N/A</dd></div><div><dt>Connections</dt><dd id="edges">N/A</dd></div></dl>
+        <p class="fine" id="activity-note">These dots show model activity.</p>
+      </aside>
+    </div>
+    <section id="comparison" hidden class="experiment-panel"><h2 id="comparison-title">Two runs</h2><p id="comparison-description"></p><p id="comparison-results" role="status"></p><canvas id="prob-chart" width="1000" height="180" aria-label="Controller results over time"></canvas></section>
+    <section id="about" class="about"><h2>Why “Fly”?</h2><p>This project trains a game controller using a small set of connections from a fruit fly brain. You can play yourself, watch it play, or change the wiring to see what happens.</p><p>Play uses classic Flappy Bird rules. The computer modes use the easier game it learned on. It reads the bird’s position and the pipes, not the screen.</p></section>
+    <details id="results" class="results"><summary>How well did it learn?</summary><p id="result-summary">Loading scores.</p><div class="table-wrap"><table><thead><tr><th>Controller</th><th>Average</th><th>Middle score</th><th>Spread</th><th>Time alive</th></tr></thead><tbody id="metrics-body"><tr><td colspan="5">Loading</td></tr></tbody></table></div><p class="fine" id="eval-details"></p><p id="graph-explanation"></p><p><a href="https://github.com/ykakade/flappy-fly-connectome/blob/master/docs/experiment.md">Read the experiment notes</a></p></details>
+    <footer><p>Made with <a href="https://male-cns.janelia.org/download/">MaleCNS data</a> from FlyEM, Cambridge, MRC LMB and Google Research. The selected data is used under <a href="https://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a>.</p><p>Flappy Bird by Dong Nguyen. <a href="https://github.com/samuelcust/flappy-bird-assets">Game assets</a> · <a href="assets/LICENSE">Asset license</a></p></footer>
+  </main>
+  <script type="module" src="app.js"></script>
+</body>
 </html>

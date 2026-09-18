@@ -6,7 +6,9 @@ for (const file of [
   "app.js",
   "environment.js",
   "controller.js",
-  "fly.png",
+  "classic.js",
+  "assets/README.md",
+  "assets/LICENSE",
   "graph.json",
   "checkpoints.json",
   "evaluation.json",
@@ -16,7 +18,7 @@ for (const file of [
   if (!fs.existsSync("dist/" + file))
     throw new Error("Missing production asset: " + file);
 }
-for (const file of ["app.js", "environment.js", "controller.js"])
+for (const file of ["app.js", "environment.js", "classic.js", "controller.js"])
   execFileSync(process.execPath, ["--check", "dist/" + file], {
     stdio: "inherit",
   });
@@ -34,3 +36,12 @@ if (
 console.log(
   `Static demo verified: ${graph.nodes.length} real nodes, ${graph.edges.length} edges.`,
 );
+
+for (const name of ["background-day", "base", "pipe-green", "message", "gameover",
+  ...["yellow", "blue"].flatMap(color => ["up", "mid", "down"].map(wing => `${color}bird-${wing}flap`)),
+  ...Array.from({length: 10}, (_, i) => String(i))]) {
+  if (!fs.existsSync(`dist/assets/${name}.png`)) throw new Error(`Missing sprite: ${name}`);
+}
+for (const name of ["wing", "hit", "point", "die"]) {
+  if (!fs.existsSync(`dist/assets/${name}.wav`)) throw new Error(`Missing sound: ${name}`);
+}

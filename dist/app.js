@@ -1,345 +1,250 @@
 import { Environment, RNG } from "./environment.js";
+import { ClassicEnvironment, CLASSIC } from "./classic.js";
 import { Controller } from "./controller.js";
 const $ = (id) => document.getElementById(id),
-  canvas = $("game"),
-  ctx = canvas.getContext("2d"),
-  nc = $("neural").getContext("2d");
-const fly = new Image();
-fly.src = "fly.png";
-let graph,
-  checkpoints,
-  report,
-  training,
-  mode = "play",
-  running = false,
-  env = new Environment(10001),
-  other = null,
-  controller = null,
-  reference = null,
-  rng = null,
-  otherRng = null,
-  pending = false,
-  activity = [],
-  probability = null,
-  trace = [],
-  otherTrace = [],
-  last = 0,
-  accumulator = 0,
-  frameTime = 0;
+  canvas = $("game"), ctx = canvas.getContext("2d"), nc = $("neural").getContext("2d");
+const sprites = {};
+const spriteNames = ["background-day", "base", "pipe-green", ...["yellow", "blue"].flatMap(color => ["up", "mid", "down"].map(wing => `${color}bird-${wing}flap`)), ...Array.from({length: 10}, (_, i) => String(i))];
+const spriteReady = Promise.all(spriteNames.map(name => new Promise((resolve, reject) => {
+  const img = new Image();
+  img.onload = resolve;
+  img.onerror = () => reject(new Error("Could not load " + name));
+  img.src = `assets/${name}.png`;
+  sprites[name] = img;
+})));
+const sounds = Object.fromEntries(["wing", "point", "hit", "die"].map(name => [name, new Audio(`assets/${name}.wav`)]));
+let soundOn = true;
+function sound(name) {
+  if (!soundOn) return;
+  const audio = sounds[name];
+  audio.currentTime = 0;
+  audio.play().catch(() => {});
+}
+let graph, checkpoints, report, training,
+  mode = "play", running = false, env = new ClassicEnvironment(10001), other = null,
+  controller = null, reference = null, rng = null, otherRng = null, pending = false,
+  activity = [], probability = null, trace = [], otherTrace = [], last = 0,
+  accumulator = 0, frameTime = 0, decisionFrame = 0, lastAction = 0, otherAction = 0,
+  deathAt = 0, deathY = 0, deathVelocity = 0, assetsLoaded = false;
 let best = 0;
-try {
-  best = Number(localStorage.getItem("flappy-fly-best-v1")) || 0;
-} catch {}
-$("best").textContent = String(best).padStart(2, "0");
-const labels = {
-  play: "HUMAN FLIGHT",
-  watch: "LIVE AI FLIGHT",
-  versus: "HUMAN / AI COMPARISON",
-  journey: "TRAINING JOURNEY",
-  lab: "CONNECTION INTERVENTION",
-};
-const checkpointNames = {
-  best: "Best · MaleCNS",
-  early: "Early · MaleCNS",
-  mid: "Mid · MaleCNS",
-  untrained: "Untrained · MaleCNS",
-  shuffled: "Trained shuffled graph",
-  mlp: "MLP baseline",
-  lesion: "Output-edge lesion",
-  random: "Random graph weights",
-  bypass: "Adapter bypass",
-};
+function bestKey() { return mode === "play" ? "flappy-fly-classic-best-v1" : "flappy-fly-experiment-best-v1"; }
+function loadBest() {
+  best = 0;
+  try { best = Math.max(0, Number(localStorage.getItem(bestKey())) || 0); } catch {}
+  $("best").textContent = best;
+}
+const labels = { play: "Your turn", watch: "Watch the computer", versus: "You vs. computer", journey: "Training", lab: "Change the wiring" };
+const checkpointNames = { best: "Trained fly wiring", early: "Early training", mid: "Mid-training", untrained: "Before training", shuffled: "Shuffled wiring", mlp: "Standard network", lesion: "Output connections cut", random: "Random strengths", bypass: "Wiring skipped" };
 function seed() {
   const value = Number($("seed").value);
-  return Number.isInteger(value) && value >= 1 && value <= 4294967295
-    ? value
-    : 10001;
+  return Number.isInteger(value) && value >= 1 && value <= 4294967295 ? value : 10001;
 }
 function selectedKey() {
-  return mode === "lab"
-    ? $("intervention").value === "none"
-      ? "best"
-      : $("intervention").value
-    : $("checkpoint").value;
+  return mode === "lab" ? ($("intervention").value === "none" ? "best" : $("intervention").value) : $("checkpoint").value;
 }
 function refreshController() {
   if (!checkpoints) return;
-  const key = selectedKey(),
-    a = checkpoints[key];
+  const a = checkpoints[selectedKey()];
   controller = new Controller(a);
   reference = new Controller(checkpoints.best);
   $("steps").textContent = a.training_steps.toLocaleString();
-  $("eval").textContent = a.evaluation_mean.toFixed(2) + " gates";
-  $("edges").textContent =
-    a.kind === "mlp" ? "— (MLP)" : graph.edges.length.toLocaleString();
-  $("node-count").textContent =
-    a.kind === "mlp"
-      ? a.weights["hidden.bias"].length + " hidden units"
-      : graph.nodes.length + " neurons";
-  $("activity-note").textContent =
-    a.kind === "mlp"
-      ? "Each dot is a hidden unit, not a biological neuron. Raw tanh activity: −1 to +1. Live inference."
-      : `All ${graph.nodes.length} retained neuron IDs are displayed; hover to inspect. No aggregation. Raw tanh activity: −1 to +1. Positions are schematic, not anatomy.`;
+  $("eval").textContent = a.evaluation_mean.toFixed(2) + " pipes";
+  $("edges").textContent = a.kind === "mlp" ? "N/A" : graph.edges.length.toLocaleString();
+  $("node-count").textContent = a.kind === "mlp" ? a.weights["hidden.bias"].length + " units" : graph.nodes.length + " neurons";
+  $("activity-note").textContent = a.kind === "mlp" ? "Each dot is a unit in the network. Color shows its value from -1 to +1." : "Each dot represents a neuron in the model. Hover for its ID. The layout is a diagram, not a brain scan.";
 }
 function clearActivity() {
-  activity = [];
-  probability = null;
-  $("prob").textContent = "—";
+  activity = []; probability = null;
+  $("prob").textContent = "N/A";
   $("prob-fill").style.width = "0";
-  $("activity-status").textContent = "IDLE";
+  $("activity-status").textContent = "Idle";
 }
 function reset() {
-  running = false;
-  pending = false;
-  accumulator = 0;
-  env = new Environment(seed(), report?.max_frames || 3600);
-  other = ["versus", "lab"].includes(mode)
-    ? new Environment(seed(), report?.max_frames || 3600)
-    : null;
-  rng = new RNG(seed() ^ 0xabcdef);
-  otherRng = new RNG(seed() ^ 0xabcdef);
-  trace = [];
-  otherTrace = [];
-  clearActivity();
-  refreshController();
-  $("score").textContent = "00";
+  running = false; pending = false; accumulator = 0; last = 0; decisionFrame = 0; deathAt = 0;
+  env = mode === "play" ? new ClassicEnvironment(seed()) : new Environment(seed(), report?.max_frames || 3600);
+  other = ["versus", "lab"].includes(mode) ? new Environment(seed(), report?.max_frames || 3600) : null;
+  rng = new RNG(seed() ^ 0xabcdef); otherRng = new RNG(seed() ^ 0xabcdef);
+  trace = []; otherTrace = [];
+  clearActivity(); refreshController(); loadBest();
+  $("score").textContent = "0";
   $("overlay").hidden = false;
-  $("overlay").querySelector(".eyebrow").textContent =
-    mode === "play"
-      ? "YOUR TURN AT THE CONTROLS"
-      : "SAME WORLD. A DIFFERENT CONTROLLER.";
-  $("overlay").querySelector("h2").innerHTML =
-    mode === "play"
-      ? "A small flap.<br>A big experiment."
-      : mode === "versus"
-        ? "You and the fly.<br>One flight path."
-        : mode === "lab"
-          ? "Change a pathway.<br>Watch what changes."
-          : "Real wiring.<br>Live decisions.";
-  $("overlay").querySelector("p").textContent =
-    mode === "play"
-      ? "Guide your fruit fly through the gates."
-      : mode === "lab"
-        ? "Solid fly: intervention. Outline: original graph."
-        : mode === "versus"
-          ? "You are the solid fly. AI is the orange outline."
-          : "Every flap is computed from the selected checkpoint.";
-  $("start").innerHTML =
-    (mode === "play"
-      ? "Start flying"
-      : mode === "versus"
-        ? "Start comparison"
-        : "Run checkpoint") + " <span>↗</span>";
-  $("overlay").querySelector(".hint").hidden = !["play", "versus"].includes(
-    mode,
-  );
-  $("run-status").textContent = "Ready · seed " + seed();
-  $("inference-label").textContent =
-    mode === "play"
-      ? "Human control"
-      : "Live inference · " + checkpointNames[selectedKey()];
-  $("activity-copy").textContent =
-    mode === "play"
-      ? "Controller activity appears during AI flight. Human mode does not generate neural signals."
-      : "Each color comes from the controller used in this flight. Biological wiring; engineered dynamics.";
+  $("overlay").classList.remove("game-ended");
+  $("overlay").classList.toggle("experiment", mode !== "play");
+  $("overlay").querySelector("h2").classList.toggle("sr-only", mode === "play");
+  $("overlay").querySelector("h2").textContent = mode === "play" ? "Get ready" : labels[mode];
+  $("ready-image").hidden = mode !== "play";
+  $("gameover-image").hidden = true;
+  $("end-card").hidden = true;
+  $("overlay-copy").hidden = mode === "play";
+  $("overlay-copy").textContent = mode === "versus" ? "You are yellow. The computer is blue." : mode === "lab" ? "Yellow: changed wiring. Blue: original wiring." : "Choose a controller, then press Start.";
+  $("start").textContent = mode === "play" ? "Play" : "Start";
+  $("run-status").textContent = ["play", "versus"].includes(mode) ? "Space, click, or tap to flap" : "Ready";
+  $("inference-label").textContent = mode === "play" ? "Human control" : checkpointNames[selectedKey()];
+  $("activity-copy").textContent = "Watch the dots change as the computer decides when to flap.";
   $("comparison-results").textContent = "";
   drawChart();
 }
 function start() {
+  if (!assetsLoaded) return;
   if (mode !== "play" && !checkpoints) {
-    $("run-status").textContent = "Controller unavailable — please reload.";
+    $("run-status").textContent = "The controller could not load. Try reloading.";
     return;
   }
-  reset();
-  running = true;
+  reset(); running = true;
+  pending = ["play", "versus"].includes(mode);
   $("overlay").hidden = true;
-  canvas.focus();
-  $("run-status").textContent = "Flight in progress";
-  $("activity-status").textContent = mode === "play" ? "HUMAN" : "LIVE";
+  canvas.focus({preventScroll: true});
+  $("run-status").textContent = "Flying";
+  $("activity-status").textContent = mode === "play" ? "Idle" : "Live";
 }
 function changeMode(next) {
   if (!(next in labels)) throw new Error("Unknown mode");
   mode = next;
-  document.querySelectorAll("[data-mode]").forEach((b) => {
+  document.body.dataset.mode = mode;
+  document.querySelectorAll("[data-mode]").forEach(b => {
+    if (b.tagName !== "BUTTON") return;
     const active = b.dataset.mode === mode;
-    b.setAttribute("aria-selected", String(active));
-    b.tabIndex = active ? 0 : -1;
+    b.setAttribute("aria-selected", String(active)); b.tabIndex = active ? 0 : -1;
   });
+  $("workspace").setAttribute("aria-labelledby", "tab-" + mode);
+  document.querySelector(".instrument").hidden = mode === "play";
+  $("mode-note").hidden = mode === "play";
   $("mode-label").textContent = labels[mode];
-  $("score-label").textContent =
-    mode === "lab" ? "INTERVENTION" : mode === "versus" ? "YOU" : "SCORE";
+  $("score-label").textContent = mode === "lab" ? "Changed wiring" : mode === "versus" ? "You" : "Score";
   $("intervention-label").hidden = mode !== "lab";
   $("checkpoint").disabled = mode === "play" || mode === "lab";
   $("comparison").hidden = !["versus", "lab", "journey"].includes(mode);
-  $("comparison-title").textContent =
-    mode === "journey"
-      ? "The training record."
-      : mode === "lab"
-        ? "Same seed. Change only the intervention."
-        : "Same seed. Two flights.";
-  $("comparison-description").textContent =
-    mode === "journey"
-      ? "Select an untrained, early, mid, or validation-selected best checkpoint. The obstacle seed remains fixed. The plot shows held-out validation scores over training."
-      : mode === "lab"
-        ? "Compare the intervention (green) against the original best controller (blue), using identical obstacle and action-sampling seeds. A shuffled controller was trained separately with the same budget."
-        : "Space, click, or tap controls your fly. The AI uses the identical obstacle seed. Scores are shown independently.";
+  $("comparison-title").textContent = mode === "journey" ? "Scores during training" : mode === "lab" ? "What changed?" : "Your scores";
+  $("comparison-description").textContent = mode === "journey" ? "Choose a training stage to watch. This chart shows how each controller improved." : mode === "lab" ? "Both controllers get the same pipes and random choices. Only the wiring changes." : "Yellow is you. Blue is the computer. You both get the same pipes.";
   reset();
 }
 function recordInference(model, state, random, records) {
   const r = model.forward(state.observation());
   const action = +(random.random() < r.probability);
-  records.push({ frame: state.frame, probability: r.probability, action });
-  return { ...r, action };
+  records.push({frame: state.frame, probability: r.probability, action});
+  return {...r, action};
+}
+function finish() {
+  $("overlay").hidden = false;
+  $("overlay").classList.add("game-ended");
+  $("overlay").classList.remove("experiment");
+  $("overlay").querySelector("h2").classList.add("sr-only");
+  $("overlay").querySelector("h2").textContent = "Game over";
+  $("ready-image").hidden = true;
+  $("gameover-image").hidden = false;
+  $("end-card").hidden = false;
+  $("end-score").textContent = env.score;
+  $("end-best").textContent = best;
+  $("overlay-copy").hidden = true;
+  $("start").textContent = "Play again";
+  $("run-status").textContent = env.frame >= env.max_frames ? "Time up" : "Game over";
+  $("activity-status").textContent = mode === "play" ? "Idle" : "Finished";
 }
 function step() {
   if (!running) return;
-  if (!env.done) {
-    let action = 0;
-    if (["play", "versus"].includes(mode)) {
-      action = +pending;
-      pending = false;
-    } else {
-      const r = recordInference(controller, env, rng, trace);
-      action = r.action;
-      activity = r.activity;
-      probability = r.probability;
+  const before = env.score, wasDone = env.done;
+  if (mode === "play") {
+    env.tick(+pending);
+    if (pending) sound("wing");
+    pending = false;
+  } else {
+    // Spread each four-frame experiment decision over four display frames.
+    // Restore previous action at the boundary exactly as Environment.step does.
+    if (!env.done) {
+      let action = 0;
+      if (decisionFrame === 0) {
+        if (mode === "versus") { action = +pending; pending = false; }
+        else {
+          const r = recordInference(controller, env, rng, trace);
+          action = r.action; activity = r.activity; probability = r.probability;
+        }
+        lastAction = action;
+        if (action) sound("wing");
+      }
+      env.tick(action);
+      if (decisionFrame === 3 || env.done) env.previous = lastAction;
     }
-    env.step(action);
-  }
-  if (other && !other.done) {
-    const r = recordInference(
-      mode === "lab" ? reference : controller,
-      other,
-      otherRng,
-      otherTrace,
-    );
-    other.step(r.action);
-    if (mode === "versus") {
-      activity = r.activity;
-      probability = r.probability;
+    if (other && !other.done) {
+      let action = 0;
+      if (decisionFrame === 0) {
+        const r = recordInference(mode === "lab" ? reference : controller, other, otherRng, otherTrace);
+        action = r.action; otherAction = action;
+        if (mode === "versus") { activity = r.activity; probability = r.probability; }
+      }
+      other.tick(action);
+      if (decisionFrame === 3 || other.done) other.previous = otherAction;
     }
+    decisionFrame = (decisionFrame + 1) % 4;
   }
-  $("score").textContent = String(env.score).padStart(2, "0");
+  if (env.score > before) sound("point");
+  if (env.done && !wasDone && env.frame < env.max_frames) sound("hit");
+  $("score").textContent = env.score;
   if (env.score > best) {
-    best = env.score;
-    $("best").textContent = String(best).padStart(2, "0");
-    try {
-      localStorage.setItem("flappy-fly-best-v1", String(best));
-    } catch {}
+    best = env.score; $("best").textContent = best;
+    try { localStorage.setItem(bestKey(), String(best)); } catch {}
   }
   if (probability !== null) {
     $("prob").textContent = (probability * 100).toFixed(1) + "%";
     $("prob-fill").style.width = probability * 100 + "%";
   }
   if (other) {
-    $("comparison-results").textContent =
-      mode === "lab"
-        ? `Intervention: ${env.score} gates · Original: ${other.score} gates · Score change: ${env.score - other.score >= 0 ? "+" : ""}${env.score - other.score}`
-        : `You: ${env.score} gates · AI: ${other.score} gates`;
-    $("run-status").textContent =
-      mode === "lab"
-        ? `Intervention ${env.score} / Original ${other.score}`
-        : `You ${env.score} / AI ${other.score}`;
-    drawChart();
+    $("comparison-results").textContent = mode === "lab" ? `Changed wiring: ${env.score}. Original: ${other.score}. Difference: ${env.score - other.score}.` : `You: ${env.score}. Computer: ${other.score}.`;
+    $("run-status").textContent = mode === "lab" ? `Changed ${env.score} / Original ${other.score}` : `You ${env.score} / Computer ${other.score}`;
+    if (decisionFrame === 0) drawChart();
   }
   if (env.done && (!other || other.done)) {
     running = false;
-    $("activity-status").textContent = mode === "play" ? "HUMAN" : "FINAL";
-    $("overlay").hidden = false;
-    $("overlay").querySelector(".eyebrow").textContent =
-      env.frame >= env.max_frames ? "EPISODE LIMIT REACHED" : "FLIGHT COMPLETE";
-    $("overlay").querySelector("h2").textContent =
-      env.score + " gates cleared.";
-    $("overlay").querySelector("p").textContent =
-      `${(env.frame / 60).toFixed(1)} seconds · Seed ${seed()}${other ? " · Comparison: " + other.score + " gates" : ""}`;
-    $("start").innerHTML = "Replay same seed <span>↻</span>";
-    $("run-status").textContent =
-      "Finished · " + (env.frame / 60).toFixed(1) + " s";
+    if (mode === "play") {
+      deathAt = frameTime; deathY = env.y * 400; deathVelocity = Math.max(0, env.vy * 400);
+      sound("die");
+    } else finish();
   }
 }
-function drawFly(x, y, rotation, ghost = false, scale = 1) {
-  ctx.save();
-  ctx.translate(x, y);
-  ctx.scale(scale, scale);
-  ctx.rotate(Math.max(-0.35, Math.min(0.65, rotation)));
-  if (ghost) {
-    ctx.globalAlpha = 0.5;
-    ctx.strokeStyle = "#d47a2c";
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.ellipse(0, 0, 23, 15, 0, 0, Math.PI * 2);
-    ctx.stroke();
-  }
-  const flutter =
-    running && !matchMedia("(prefers-reduced-motion: reduce)").matches
-      ? Math.sin(frameTime * 0.05) * 2
-      : 0;
-  if (fly.complete) ctx.drawImage(fly, -40, -40 + flutter, 80, 80);
+function sprite(name, x, y, w, h) {
+  const img = sprites[name];
+  if (img?.naturalWidth) ctx.drawImage(img, Math.round(x), Math.round(y), w ?? img.width, h ?? img.height);
+}
+function drawBird(x, y, velocity, blue = false, scale = 1) {
+  ctx.save(); ctx.translate(Math.round(x), Math.round(y));
+  ctx.rotate(Math.max(-.45, Math.min(Math.PI / 2, velocity > 1 ? (velocity - 1) * .22 : -.35)));
+  const wing = !env.done && !matchMedia("(prefers-reduced-motion: reduce)").matches ? ["up", "mid", "down", "mid"][Math.floor(frameTime / 100) % 4] : "mid";
+  sprite(`${blue ? "blue" : "yellow"}bird-${wing}flap`, -17 * scale, -12 * scale, 34 * scale, 24 * scale);
   ctx.restore();
 }
+function drawScore(score) {
+  const digits = String(score).split("");
+  const width = digits.reduce((sum, digit) => sum + (sprites[digit]?.width || 24) + 1, -1);
+  let x = (288 - width) / 2;
+  for (const digit of digits) { sprite(digit, x, 32); x += (sprites[digit]?.width || 24) + 1; }
+}
 function draw() {
-  const W = 960,
-    H = 540;
-  ctx.fillStyle = "#deedf5";
-  ctx.fillRect(0, 0, W, H);
-  ctx.strokeStyle = "#c5dce9";
-  ctx.lineWidth = 0.6;
-  const offset = (env.frame * 0.0035 * W) % 40;
-  for (let x = -offset; x < W; x += 40) {
-    ctx.beginPath();
-    ctx.moveTo(x, 0);
-    ctx.lineTo(x, H);
-    ctx.stroke();
-  }
-  for (let y = 0; y < H; y += 40) {
-    ctx.beginPath();
-    ctx.moveTo(0, y);
-    ctx.lineTo(W, y);
-    ctx.stroke();
-  }
+  ctx.imageSmoothingEnabled = false;
+  ctx.fillStyle = "#4ec0ca"; ctx.fillRect(0, 0, 288, 512);
+  sprite("background-day", 0, 0);
   const display = other && env.done && !other.done ? other : env;
-  for (const p of display.pipes) {
-    const x = p.x * W,
-      w = 0.09 * W,
-      top = (p.center - 0.16) * H,
-      bot = (p.center + 0.16) * H;
-    ctx.fillStyle = "#aac5d4";
-    ctx.fillRect(x, 0, w, top);
-    ctx.fillRect(x, bot, w, H - bot);
-    ctx.fillStyle = "#799daf";
-    ctx.fillRect(x - 5, top - 10, w + 10, 10);
-    ctx.fillRect(x - 5, bot, w + 10, 10);
-    ctx.strokeStyle = "#8aaec0";
-    for (let y = 8; y < top - 14; y += 13) {
-      ctx.beginPath();
-      ctx.moveTo(x + 8, y);
-      ctx.lineTo(x + 22, y);
-      ctx.stroke();
-    }
-    ctx.fillStyle = "#587d92";
-    ctx.font = "11px monospace";
-    ctx.fillText("GATE", x + 13, top - 24);
+  const classic = mode === "play";
+  const pipeWidth = classic ? CLASSIC.pipeWidth : .09 * 288;
+  const halfGap = classic ? CLASSIC.gap / 2 : .16 * 400;
+  if (env.frame > 0) for (const pipe of display.pipes) {
+    const x = Math.round(pipe.x * 288), top = Math.round(pipe.center * 400 - halfGap), bottom = Math.round(pipe.center * 400 + halfGap);
+    ctx.save(); ctx.translate(x, top); ctx.scale(1, -1);
+    sprite("pipe-green", 0, 0, pipeWidth, 320); ctx.restore();
+    sprite("pipe-green", x, bottom, pipeWidth, 320);
   }
-  ctx.strokeStyle = "#92b6cd";
-  ctx.setLineDash([4, 7]);
-  ctx.beginPath();
-  ctx.moveTo(0.22 * W, 0);
-  ctx.lineTo(0.22 * W, H);
-  ctx.stroke();
-  ctx.setLineDash([]);
-  if (!running && env.frame === 0) {
-    drawFly(
-      canvas.clientWidth < 600 ? 800 : 750,
-      canvas.clientWidth < 600 ? 415 : 285,
-      0,
-      false,
-      canvas.clientWidth < 600 ? 1.8 : 2.4,
-    );
-  } else {
-    drawFly(0.22 * W, env.y * H, env.vy * 25);
-    if (other) drawFly(0.22 * W, other.y * H, other.vy * 25, true);
+  if (running || env.frame > 0 || mode !== "play") {
+    const x = classic ? CLASSIC.birdX : .22 * 288;
+    // Experiment sprites fit their original collision box.
+    const birdScale = classic ? 1 : .48;
+    drawBird(x, classic && deathAt ? deathY : env.y * 400, classic && deathAt ? 10 : env.vy * 400, false, birdScale);
+    if (other) drawBird(x, other.y * 400, other.vy * 400, true, birdScale);
   }
-  drawNeural();
+  const offset = env.frame === 0 ? Math.floor(frameTime / (1000 / 60) * 2) % 48 : Math.floor(env.frame * (classic ? 2 : .0035 * 288)) % 48;
+  sprite("base", -offset, 400);
+  if (running) drawScore(env.score);
+  if (deathAt && frameTime - deathAt < 100 && !matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    ctx.fillStyle = "rgba(255,255,255,.65)"; ctx.fillRect(0, 0, 288, 512);
+  }
+  if (mode !== "play") drawNeural();
 }
 let positions = [];
 function graphPositions() {
@@ -452,11 +357,11 @@ function drawChart() {
   } else {
     series = [
       {
-        name: "Intervention",
+        name: "Changed wiring",
         points: trace.map((p) => [p.frame / 60, p.probability]),
       },
       {
-        name: mode === "lab" ? "Original" : "AI",
+        name: mode === "lab" ? "Original" : "Computer",
         points: otherTrace.map((p) => [p.frame / 60, p.probability]),
       },
     ];
@@ -471,7 +376,7 @@ function drawChart() {
   cx.stroke();
   cx.font = "12px monospace";
   cx.fillStyle = "#5c6b7b";
-  cx.fillText(mode === "journey" ? "Validation gates" : "P(flap)", 45, 13);
+  cx.fillText(mode === "journey" ? "Training score" : "Chance of a flap", 45, 13);
   cx.fillText(
     mode === "journey"
       ? `${maxX.toLocaleString()} decisions`
@@ -497,154 +402,100 @@ function drawChart() {
 function loop(t) {
   frameTime = t;
   if (!last) last = t;
-  const delta = Math.min(t - last, 150);
+  const delta = Math.min(t - last, 100);
   last = t;
-  if (running) {
-    accumulator += delta;
-    while (accumulator >= 1000 / 15 && running) {
-      step();
-      accumulator -= 1000 / 15;
+  if (!document.hidden) {
+    if (running) {
+      accumulator += delta;
+      while (accumulator >= 1000 / 60 && running) { step(); accumulator -= 1000 / 60; }
+    } else if (deathAt && $("overlay").hidden) {
+      deathVelocity = Math.min(deathVelocity + .5 * delta / (1000 / 60), 10);
+      deathY = Math.min(388, deathY + deathVelocity * delta / (1000 / 60));
+      if (deathY >= 388 && t - deathAt > 500) finish();
     }
+    draw();
   }
-  draw();
   requestAnimationFrame(loop);
 }
 requestAnimationFrame(loop);
 $("start").addEventListener("click", start);
 $("reset").addEventListener("click", reset);
-$("seed").addEventListener("change", () => {
-  $("seed").value = seed();
-  reset();
+$("sound").addEventListener("click", () => {
+  soundOn = !soundOn;
+  $("sound").textContent = soundOn ? "Sound on" : "Sound off";
+  $("sound").setAttribute("aria-pressed", String(soundOn));
+  if (!soundOn) Object.values(sounds).forEach(audio => audio.pause());
 });
+$("seed").addEventListener("change", () => { $("seed").value = seed(); reset(); });
 $("checkpoint").addEventListener("change", reset);
 $("intervention").addEventListener("change", reset);
-document.querySelectorAll("[data-mode]").forEach((b) => {
+document.querySelectorAll("button[data-mode]").forEach(b => {
   b.addEventListener("click", () => changeMode(b.dataset.mode));
-  b.addEventListener("keydown", (e) => {
+  b.addEventListener("keydown", e => {
     if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(e.key)) return;
     e.preventDefault();
-    const buttons = [...document.querySelectorAll("[data-mode]")],
-      i = buttons.indexOf(b),
-      next =
-        e.key === "Home"
-          ? 0
-          : e.key === "End"
-            ? buttons.length - 1
-            : (i + (e.key === "ArrowRight" ? 1 : -1) + buttons.length) %
-              buttons.length;
-    changeMode(buttons[next].dataset.mode);
-    buttons[next].focus();
+    const buttons = [...document.querySelectorAll("button[data-mode]")].filter(button => !button.disabled), i = buttons.indexOf(b);
+    const next = e.key === "Home" ? 0 : e.key === "End" ? buttons.length - 1 : (i + (e.key === "ArrowRight" ? 1 : -1) + buttons.length) % buttons.length;
+    changeMode(buttons[next].dataset.mode); buttons[next].focus();
   });
 });
 function flap() {
   if (!["play", "versus"].includes(mode)) return;
   if (!running) {
-    if (env.frame === 0) start();
-    else return;
+    if (deathAt && $("overlay").hidden) return;
+    start(); return;
   }
-  pending = true;
+  if (!env.done) pending = true;
 }
-canvas.addEventListener("pointerdown", (e) => {
-  e.preventDefault();
-  flap();
+canvas.addEventListener("pointerdown", e => {
+  if (e.button !== 0) return;
+  e.preventDefault(); flap();
 });
-document.addEventListener("keydown", (e) => {
-  if (
-    (e.code === "Space" || e.code === "ArrowUp") &&
-    !["INPUT", "SELECT", "BUTTON", "A"].includes(document.activeElement.tagName)
-  ) {
-    e.preventDefault();
-    flap();
-  }
-  if (
-    e.code === "KeyR" &&
-    !["INPUT", "SELECT"].includes(document.activeElement.tagName)
-  )
-    reset();
+document.addEventListener("keydown", e => {
+  if (["INPUT", "SELECT", "BUTTON", "A", "SUMMARY"].includes(document.activeElement.tagName)) return;
+  if (e.code === "Space" || e.code === "ArrowUp") { e.preventDefault(); if (!e.repeat) flap(); }
+  if (e.code === "KeyR" && !e.repeat) reset();
 });
-document.addEventListener("visibilitychange", () => {
-  last = 0;
-  accumulator = 0;
-});
+document.addEventListener("visibilitychange", () => { last = 0; accumulator = 0; });
 async function load() {
   try {
-    [graph, checkpoints, report, training] = await Promise.all(
-      [
-        "graph.json",
-        "checkpoints.json",
-        "evaluation.json",
-        "training.json",
-      ].map(async (p) => {
-        const r = await fetch(p);
-        if (!r.ok) throw new Error(p + " " + r.status);
-        return r.json();
-      }),
-    );
-    graphPositions();
-    const show = [
-      "untrained",
-      "best",
-      "shuffled",
-      "mlp",
-      "lesion",
-      "random",
-      "bypass",
-    ];
-    $("metrics-body").replaceChildren(
-      ...show.map((name) => {
-        const r = report.results.find((x) => x.name === name),
-          tr = document.createElement("tr");
-        [
-          checkpointNames[name],
-          r.mean.toFixed(2),
-          r.median.toFixed(1),
-          r.std.toFixed(2),
-          r.survival_seconds.toFixed(1) + " s",
-        ].forEach((v) => {
-          const td = document.createElement("td");
-          td.textContent = v;
-          tr.append(td);
-        });
-        return tr;
-      }),
-    );
-    const un = report.results.find((r) => r.name === "untrained"),
-      trained = report.results.find((r) => r.name === "best");
-    $("result-summary").textContent =
-      `The selected connectome controller averaged ${trained.mean.toFixed(2)} gates, compared with ${un.mean.toFixed(2)} before training. ${trained.mean > un.mean ? "It improved in this run." : "This run did not establish useful learning."} One training seed and a small subgraph cannot establish a biological advantage.`;
-    $("eval-details").textContent =
-      `${trained.evaluation_episodes} common unseen seeds (${trained.evaluation_seeds[0]}–${trained.evaluation_seeds.at(-1)}). Population SD. Episode cap ${report.max_frames / 60}s. Seeded stochastic actions. Best selected on separate validation seeds.`;
-    $("graph-explanation").textContent =
-      `A deterministic strongest-edge expansion retains ${graph.nodes.length} nodes and ${graph.edges.length} real connections around a visual-to-descending edge. An engineered adapter injects six game-state values into ${graph.inputs.length} visual nodes. Four sparse passes feed ${graph.outputs.length} descending readout nodes. PPO trains adapters, node gains and biases; measured normalized edge weights and topology stay fixed. The controller does not see pixels.`;
-    reset();
-  } catch (e) {
-    $("activity-copy").textContent =
-      "AI artifacts could not load. Human flight remains available.";
-    $("run-status").textContent = "AI unavailable: " + e.message;
-    document
-      .querySelectorAll('[data-mode]:not([data-mode="play"])')
-      .forEach((b) => (b.disabled = true));
+    const data = await Promise.all(["graph.json", "checkpoints.json", "evaluation.json", "training.json"].map(async p => {
+      const r = await fetch(p); if (!r.ok) throw new Error(p + " " + r.status); return r.json();
+    }));
+    [graph, checkpoints, report, training] = data;
+    graphPositions(); refreshController();
+    const show = ["untrained", "best", "shuffled", "mlp", "lesion", "random", "bypass"];
+    $("metrics-body").replaceChildren(...show.map(name => {
+      const r = report.results.find(x => x.name === name), tr = document.createElement("tr");
+      [checkpointNames[name], r.mean.toFixed(2), r.median.toFixed(1), r.std.toFixed(2), r.survival_seconds.toFixed(1) + " s"].forEach(v => {
+        const td = document.createElement("td"); td.textContent = v; tr.append(td);
+      }); return tr;
+    }));
+    const un = report.results.find(r => r.name === "untrained"), trained = report.results.find(r => r.name === "best");
+    $("result-summary").textContent = `The fly-wiring controller went from ${un.mean.toFixed(2)} to ${trained.mean.toFixed(2)} pipes on average after training. Shuffled wiring and a standard network scored higher. Fly wiring did not give it an advantage in this test.`;
+    $("eval-details").textContent = `${trained.evaluation_episodes} pipe layouts that were not used for training. Each run lasted up to ${report.max_frames / 60} seconds. “Spread” is the standard deviation. These scores use the experiment rules.`;
+    $("graph-explanation").textContent = `The model uses ${graph.nodes.length} neurons and ${graph.edges.length} connections from MaleCNS. Training adjusts how it uses those connections. This is a small model built from wiring data, not a simulation of a living fly.`;
+    drawChart();
+  } catch {
+    $("activity-copy").textContent = "The controllers could not load. Reload to try again.";
+    $("result-summary").textContent = "Scores could not load. You can still play.";
+    $("metrics-body").textContent = "";
+    document.querySelectorAll('button[data-mode]:not([data-mode="play"])').forEach(b => b.disabled = true);
   }
 }
+reset();
+spriteReady.then(() => { assetsLoaded = true; }).catch(() => {
+  $("run-status").textContent = "Game art could not load. Please reload.";
+  $("start").disabled = true;
+});
 load();
-// Public readback uses the same live state as the visible interface and automated QA.
 window.flappyFly = {
-  getState: () => ({
-    mode,
-    running,
-    seed: seed(),
-    score: env.score,
-    otherScore: other?.score,
-    frame: env.frame,
-    probability,
-    activity: activity.slice(),
-    controller: selectedKey(),
-    ready: !!checkpoints,
-  }),
-  setMode: changeMode,
-  start,
-  reset,
+  getState: () => ({ mode, running, seed: seed(), score: env.score, otherScore: other?.score,
+    frame: env.frame, y: env.y, vy: env.vy, done: env.done, pipes: env.pipes.map(p => ({...p})),
+    probability, activity: activity.slice(), controller: selectedKey(), ready: assetsLoaded && !!checkpoints }),
+  setMode: changeMode, start, reset,
 };
+
 if (document.modelContext?.registerTool) {
   const lifecycle = new AbortController();
   for (const tool of [

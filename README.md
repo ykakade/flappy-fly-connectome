@@ -2,7 +2,7 @@
 
 Play Flappy Bird, or watch a controller trained with connections from a fruit fly brain.
 
-[Play online](https://flappy-fly-connectome.pox.chatgpt.site)
+[Play online](https://projects.yashkakade.com/flappy-fly/)
 
 ## Play
 

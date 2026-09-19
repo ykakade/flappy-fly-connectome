@@ -8,7 +8,7 @@ export class Controller {
     this.kind = artifact.kind;
     this.intervention = artifact.intervention || "none";
   }
-  forward(obs) {
+  forward(obs, { trace = false } = {}) {
     const w = this.w;
     if (this.kind === "mlp") {
       const h = linear(obs, w["hidden.weight"], w["hidden.bias"]).map(
@@ -19,6 +19,7 @@ export class Controller {
           1 /
           (1 + Math.exp(-linear(h, w["policy.weight"], w["policy.bias"])[0])),
         activity: h,
+        ...(trace ? { passes: [h.slice()], edgeActivity: [], readout: h.map((v, i) => v * w["policy.weight"][0][i]) } : {}),
       };
     }
     const n = w.bias.length,
@@ -31,15 +32,24 @@ export class Controller {
     if (this.intervention === "random" && this.artifact.random_edge_weights)
       weights = this.artifact.random_edge_weights;
     const outputs = new Set(w.outputs);
+    const passes = [];
+    const edgePasses = [];
     for (let pass = 0; pass < 4; pass++) {
       const msg = Array(n).fill(0);
+      const signals = trace ? Array(w.src.length).fill(0) : null;
       for (let e = 0; e < w.src.length; e++) {
         if (this.intervention === "lesion" && outputs.has(w.dst[e])) continue;
-        msg[w.dst[e]] += h[w.src[e]] * weights[e];
+        const message = h[w.src[e]] * weights[e];
+        msg[w.dst[e]] += message;
+        if (trace) signals[e] = message * w.gain[w.dst[e]];
       }
       h = h.map((_, i) =>
         Math.tanh(inject[i] + w.bias[i] + msg[i] * w.gain[i]),
       );
+      if (trace) {
+        passes.push(h.slice());
+        edgePasses.push(signals);
+      }
     }
     const out =
       this.intervention === "bypass"
@@ -53,6 +63,13 @@ export class Controller {
         1 /
         (1 + Math.exp(-linear(out, w["policy.weight"], w["policy.bias"])[0])),
       activity: h,
+      ...(trace ? {
+        passes,
+        edgePasses,
+        edgeActivity: edgePasses.at(-1),
+        readout: out.map((v, i) => v * w["policy.weight"][0][i]),
+        bypassed: this.intervention === "bypass",
+      } : {}),
     };
   }
 }

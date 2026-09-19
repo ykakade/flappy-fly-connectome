@@ -6,26 +6,33 @@
   <meta name="description" content="Play Flappy Fly. Tap to flap, avoid the pipes, or watch a controller trained with fruit fly brain connections." />
   <title>Flappy Fly</title>
   <link rel="icon" type="image/png" href="assets/yellowbird-midflap.png" />
-  <link rel="stylesheet" href="style.css" />
+  <link rel="stylesheet" href="style.css?v=2" />
 </head>
-<body data-mode="play">
+<body data-mode="watch">
   <header>
     <a class="brand" href="./"><img src="assets/yellowbird-midflap.png" width="34" height="24" alt="" />Flappy Fly</a>
-    <nav aria-label="Main"><a href="#about">About</a><a href="https://github.com/ykakade/flappy-fly-connectome/tree/master">GitHub</a></nav>
+    <nav aria-label="Main"><a href="/">Projects</a><a href="#about">About</a><a href="https://github.com/ykakade/flappy-fly-connectome/tree/master">GitHub</a></nav>
   </header>
   <main>
-    <div class="intro"><h1>Tap to flap.</h1><p>Avoid the pipes and the ground.</p></div>
+    <div class="intro"><h1>Watch the fly play.</h1><p>Every button press is a decision from the model.</p></div>
     <div class="tabs" role="tablist" aria-label="Game mode">
-      <button id="tab-play" role="tab" aria-selected="true" aria-controls="workspace" data-mode="play">Play</button>
-      <button id="tab-watch" role="tab" aria-selected="false" aria-controls="workspace" tabindex="-1" data-mode="watch">Watch</button>
+      <button id="tab-watch" role="tab" aria-selected="true" aria-controls="workspace" data-mode="watch">Watch the fly</button>
+      <button id="tab-play" role="tab" aria-selected="false" aria-controls="workspace" tabindex="-1" data-mode="play">Play yourself</button>
       <button id="tab-versus" role="tab" aria-selected="false" aria-controls="workspace" tabindex="-1" data-mode="versus">You vs. computer</button>
       <button id="tab-journey" role="tab" aria-selected="false" aria-controls="workspace" tabindex="-1" data-mode="journey">Training</button>
       <button id="tab-lab" role="tab" aria-selected="false" aria-controls="workspace" tabindex="-1" data-mode="lab">Change the wiring</button>
     </div>
-    <p id="mode-note" class="mode-note" hidden>These modes use the easier rules the controllers were trained on.</p>
-    <div class="workspace" id="workspace" role="tabpanel" aria-labelledby="tab-play">
+    <div class="watch-toolbar" id="watch-toolbar"><div class="watch-state"><span class="live-dot"></span><span id="watch-state">Loading the fly</span></div><div class="watch-buttons"><button id="pause" aria-pressed="false">Pause</button><label>Speed <select id="speed"><option value="0.25">¼×</option><option value="0.5">½×</option><option value="1" selected>1×</option><option value="2">2×</option></select></label></div></div>
+    <p id="mode-note" class="mode-note">The fly uses the easier rules it learned on. Play yourself uses classic rules.</p>
+    <div class="workspace" id="workspace" role="tabpanel" aria-labelledby="tab-watch">
+      <section id="fly-stage" class="fly-stage" aria-label="Fly at the controller">
+        <div class="panel-heading"><h2>The player</h2><span>3D fly</span></div>
+        <div class="fly-canvas-wrap"><canvas id="fly-scene" width="640" height="640" tabindex="0" aria-label="An anatomical fruit fly pressing an arcade button with its front leg. Drag or use arrow keys to turn the view."></canvas><p id="fly-loading">Loading the fly body…</p></div>
+        <div class="action-strip"><span id="fly-action">Waiting</span><span><b id="press-count">0</b> button presses</span></div>
+        <p class="stage-note">The front leg moves when the model chooses to flap.</p>
+      </section>
       <section class="arena" aria-label="Game">
-        <div class="arena-head"><span id="mode-label">Your turn</span><div><button id="sound" class="text-button" aria-pressed="true">Sound on</button><button id="reset" class="text-button">Restart</button></div></div>
+        <div class="arena-head"><span id="mode-label">Your turn</span><div><button id="sound" class="text-button" aria-pressed="false">Sound off</button><button id="reset" class="text-button">Restart</button></div></div>
         <div class="game-wrap">
           <canvas id="game" width="288" height="512" tabindex="0" aria-label="Flappy Fly. Press space or up arrow, click, or tap to flap. Avoid the pipes and ground."></canvas>
           <div id="overlay">
@@ -41,28 +48,32 @@
         <div class="game-foot"><span id="run-status" role="status">Space, click, or tap to flap</span><span>Best <b id="best">0</b></span></div>
         <p id="inference-label" class="sr-only">Human control</p>
       </section>
-      <aside class="instrument" hidden>
-        <div class="instrument-head"><h2>Inside the controller</h2><span class="live-tag" id="activity-status">Idle</span></div>
-        <p id="activity-copy">Watch the dots change as the computer decides when to flap.</p>
-        <canvas id="neural" width="480" height="250" aria-label="Controller activity. Each dot is one node."></canvas>
+      <aside class="instrument">
+        <div class="instrument-head"><h2>Brain activity</h2><span class="live-tag" id="activity-status">Idle</span></div>
+        <p id="activity-copy">96 neurons from the fly connectome. Colors show their current values.</p>
+        <canvas id="neural" width="640" height="410" tabindex="0" aria-label="Live neuron activity and directed signals at recorded neuron positions. Drag to rotate. Select a neuron to see its connections. Arrow keys rotate or select neurons; Escape clears the selection."></canvas>
         <div class="activity-key"><span>−1 <i></i> +1</span><span id="node-count">Loading</span></div>
+        <div class="brain-legend"><span><i class="input-ring"></i>Input</span><span><i class="output-ring"></i>Output</span><span>Brighter lines carry stronger signals.</span></div>
+        <p class="neuron-readout" id="neuron-readout">Loading neuron positions.</p>
+        <p class="path-readout" id="path-readout">Paths light up when the controller runs.</p>
         <div class="prob"><span>Chance of a flap</span><b id="prob">N/A</b></div>
         <div class="prob-track"><i id="prob-fill"></i></div>
-        <div class="controller-controls">
+        <details class="controller-settings"><summary>Controller settings</summary><div class="controller-controls">
           <label>Controller<select id="checkpoint"><option value="best">Trained fly wiring</option><option value="early">Early training</option><option value="mid">Later training</option><option value="untrained">Before training</option><option value="shuffled">Shuffled wiring</option><option value="mlp">Standard neural network</option></select></label>
           <label id="intervention-label" hidden>Change<select id="intervention"><option value="none">Keep the original wiring</option><option value="lesion">Cut the output connections</option><option value="random">Randomize connection strengths</option><option value="bypass">Skip the wiring</option><option value="shuffled">Use trained shuffled wiring</option></select></label>
+          <label>Show calculation pass<select id="brain-pass"><option value="0">1 of 4</option><option value="1">2 of 4</option><option value="2">3 of 4</option><option value="3" selected>4 of 4</option></select></label>
           <label>Pipe layout<input id="seed" type="number" value="10001" min="1" max="4294967295" aria-label="Pipe layout seed" /></label>
         </div>
         <p class="fine">The same number gives the same pipes.</p>
         <dl><div><dt>Training steps</dt><dd id="steps">N/A</dd></div><div><dt>Average score</dt><dd id="eval">N/A</dd></div><div><dt>Connections</dt><dd id="edges">N/A</dd></div></dl>
-        <p class="fine" id="activity-note">These dots show model activity.</p>
+        <p class="fine" id="activity-note">These dots show model activity.</p></details>
       </aside>
     </div>
     <section id="comparison" hidden class="experiment-panel"><h2 id="comparison-title">Two runs</h2><p id="comparison-description"></p><p id="comparison-results" role="status"></p><canvas id="prob-chart" width="1000" height="180" aria-label="Controller results over time"></canvas></section>
-    <section id="about" class="about"><h2>Why “Fly”?</h2><p>This project trains a game controller using a small set of connections from a fruit fly brain. You can play yourself, watch it play, or change the wiring to see what happens.</p><p>Play uses classic Flappy Bird rules. The computer modes use the easier game it learned on. It reads the bird’s position and the pipes, not the screen.</p></section>
+    <section id="about" class="about"><h2>What you’re watching</h2><p>A trained model with 96 fruit-fly neurons decides when to flap. Each decision drives the game, the button, and the fly’s front leg. The brain panel shows the values and signals from that same calculation. Select a neuron to follow its connections.</p><p>The model reads the bird’s position and the pipes. The fly body and leg gestures are an animation of its choices, not a simulation of a living fly. No gameplay or brain activity is prerecorded.</p></section>
     <details id="results" class="results"><summary>How well did it learn?</summary><p id="result-summary">Loading scores.</p><div class="table-wrap"><table><thead><tr><th>Controller</th><th>Average</th><th>Middle score</th><th>Spread</th><th>Time alive</th></tr></thead><tbody id="metrics-body"><tr><td colspan="5">Loading</td></tr></tbody></table></div><p class="fine" id="eval-details"></p><p id="graph-explanation"></p><p><a href="https://github.com/ykakade/flappy-fly-connectome/blob/master/docs/experiment.md">Read the experiment notes</a></p></details>
-    <footer><p>Made with <a href="https://male-cns.janelia.org/download/">MaleCNS data</a> from FlyEM, Cambridge, MRC LMB and Google Research. The selected data is used under <a href="https://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a>.</p><p>Flappy Bird by Dong Nguyen. <a href="https://github.com/samuelcust/flappy-bird-assets">Game assets</a> · <a href="assets/LICENSE">Asset license</a></p></footer>
+    <footer><p>Made with <a href="https://male-cns.janelia.org/download/">MaleCNS data</a> from FlyEM, Cambridge, MRC LMB and Google Research. The selected data is used under <a href="https://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a>.</p><p>Fly body: <a href="https://github.com/TuragaLab/flybody">flybody, Google DeepMind and HHMI Janelia</a> · <a href="assets/flybody/LICENSE">Apache 2.0</a>. Simplified for the browser. 3D rendering: <a href="vendor/THREE-LICENSE">Three.js</a>.</p><p>Flappy Bird by Dong Nguyen. <a href="https://github.com/samuelcust/flappy-bird-assets">Game assets</a> · <a href="assets/LICENSE">Asset license</a></p></footer>
   </main>
-  <script type="module" src="app.js"></script>
+  <script type="module" src="app.js?v=2"></script>
 </body>
 </html>

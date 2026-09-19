@@ -7,6 +7,15 @@ for (const file of [
   "environment.js",
   "controller.js",
   "classic.js",
+  "fly-scene.js",
+  "brain-view.js",
+  "assets/flybody/fly.json",
+  "assets/flybody/fly.bin",
+  "assets/flybody/LICENSE",
+  "assets/brain-shell.json",
+  "vendor/three.module.min.js",
+  "vendor/three.core.min.js",
+  "vendor/THREE-LICENSE",
   "assets/README.md",
   "assets/LICENSE",
   "graph.json",
@@ -18,13 +27,13 @@ for (const file of [
   if (!fs.existsSync("dist/" + file))
     throw new Error("Missing production asset: " + file);
 }
-for (const file of ["app.js", "environment.js", "classic.js", "controller.js"])
+for (const file of ["app.js", "environment.js", "classic.js", "controller.js", "fly-scene.js", "brain-view.js"])
   execFileSync(process.execPath, ["--check", "dist/" + file], {
     stdio: "inherit",
   });
 const html = fs.readFileSync("dist/index.html", "utf8");
 for (const m of html.matchAll(/(?:src|href)="([^"#:]+)"/g)) {
-  if (!/^https?:|^data:/.test(m[1]) && !fs.existsSync("dist/" + m[1]))
+  if (!/^https?:|^data:/.test(m[1]) && !fs.existsSync("dist/" + m[1].split("?")[0]))
     throw new Error("Broken asset " + m[1]);
 }
 const graph = JSON.parse(fs.readFileSync("dist/graph.json"));

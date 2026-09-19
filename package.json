@@ -5,9 +5,15 @@
   "type": "module",
   "scripts": {
     "build": "node scripts/build.mjs",
+    "build:deploy": "npm run build && node scripts/build-deploy.mjs",
     "dev": "python3 -m http.server 4173 --directory dist",
+    "dev:deploy": "npm run build:deploy && wrangler dev",
+    "deploy": "npm run build:deploy && wrangler deploy",
     "test": "node --test tests/browser.test.mjs",
-    "lint": "node --check dist/app.js && node --check dist/environment.js && node --check dist/controller.js && node --check dist/classic.js"
+    "lint": "node --check dist/app.js && node --check dist/environment.js && node --check dist/controller.js && node --check dist/classic.js && node --check dist/fly-scene.js && node --check dist/brain-view.js"
+  },
+  "devDependencies": {
+    "wrangler": "4.92.0"
   },
   "engines": {
     "node": ">=20"

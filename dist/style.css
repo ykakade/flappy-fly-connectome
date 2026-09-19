@@ -97,3 +97,82 @@ footer p { font-size: 12px; line-height: 1.7; }
 @media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto; } }
 
 #overlay.game-ended .primary, #overlay.experiment .primary { top: 65%; }
+
+/* The fly, the live game, and the model activity share one view. */
+header { max-width: 1480px; }
+main { max-width: 1480px; }
+.intro { margin-bottom: 18px; }
+.watch-toolbar { display: flex; align-items: center; justify-content: space-between; margin: 0 0 14px; gap: 16px; }
+.watch-state, .watch-buttons { display: flex; align-items: center; gap: 12px; font-size: 14px; }
+.live-dot { width: 7px; height: 7px; border-radius: 50%; background: #428773; }
+.watch-buttons button { border: 1px solid #cbd3cd; border-radius: 5px; background: white; color: #26352e; padding: 7px 18px; min-width: 86px; }
+.watch-buttons label { display: flex; align-items: center; gap: 8px; }
+.watch-buttons select { margin: 0; width: 78px; padding: 6px; font-size: 14px; }
+body:not([data-mode="play"]) .workspace { grid-template-columns: minmax(300px, 1fr) 252px minmax(360px, 1.05fr); gap: 20px; align-items: start; background: #111a20; border: 1px solid #2d3e48; border-radius: 10px; padding: 20px; color: #e1edf2; }
+body:not([data-mode="play"]) .arena { width: 100%; margin-top: 0; }
+body:not([data-mode="play"]) .arena-head { min-height: 30px; margin-bottom: 12px; gap: 8px; font-size: 13px; }
+body:not([data-mode="play"]) .arena-head > div { gap: 10px; }
+body:not([data-mode="play"]) .text-button { color: #a2b4bf; font-size: 12px; }
+body:not([data-mode="play"]) .game-wrap { border-color: #344852; }
+body:not([data-mode="play"]) .game-foot { color: #a2b4bf; gap: 8px; font-size: 12px; flex-wrap: wrap; }
+body:not([data-mode="play"]) .game-foot b { color: #fff; }
+body:not([data-mode="play"]) .instrument { margin: 0; padding: 0; border: 0; border-radius: 0; min-width: 0; }
+.instrument-head, .panel-heading { min-height: 30px; margin-bottom: 12px; }
+.panel-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.panel-heading h2 { font-size: 17px; margin: 0; }
+.panel-heading > span { font-size: 12px; color: #98abb8; }
+.fly-stage { min-width: 0; }
+.fly-canvas-wrap { position: relative; }
+#fly-scene { width: 100%; aspect-ratio: 1 / 1.1; display: block; touch-action: pan-y; border: 1px solid #253640; border-radius: 6px; cursor: grab; }
+#fly-loading { position: absolute; inset: 0; display: grid; align-content: center; text-align: center; padding: 22px; color: #a2b4bf; background: #111a20; margin: 0; font-size: 14px; }
+.action-strip { border-top: 1px solid #2a3c46; padding: 14px 0 0; margin-top: 14px; display: flex; justify-content: space-between; gap: 12px; font-size: 13px; color: #95a9b6; font-variant-numeric: tabular-nums; }
+#fly-action { color: #d3e3ea; min-width: 70px; }
+.pressing #fly-action { color: #ff9e7b; }
+.stage-note { font-size: 13px; line-height: 1.55; color: #95a9b6; margin: 12px 0 0; }
+.instrument p { color: #95a9b6; }
+.instrument .live-tag { color: #68e6d2; }
+#activity-copy { margin-top: 0; min-height: 42px; }
+#neural { border: 1px solid #253640; touch-action: pan-y; cursor: grab; }
+.activity-key { color: #9aaebb; margin-bottom: 12px; }
+.activity-key i { background: linear-gradient(90deg, #ff996c, #23333e, #68e6d2); }
+.brain-legend { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; font-size: 12px; color: #a2b4bf; }
+.brain-legend span { display: flex; align-items: center; gap: 5px; }
+.brain-legend i { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+.input-ring { border: 1px solid #b8eaff; }
+.output-ring { border: 1px solid #ffcd89; }
+.instrument .neuron-readout, .instrument .path-readout { font-size: 12px; line-height: 1.7; font-variant-numeric: tabular-nums; margin: 12px 0; min-height: 40px; }
+.instrument .neuron-readout { color: #dce9ef; }
+.instrument .path-readout { margin-top: 0; }
+.prob-track { background: #273a42; }
+.prob-track i { background: #68e6d2; }
+.controller-settings { border-top: 1px solid #2a3c46; padding-top: 14px; margin-top: 18px; }
+.controller-settings summary { color: #b3c3cc; font-size: 14px; font-weight: 500; }
+.controller-settings input, .controller-settings select { background: #17252f; color: #e4edf2; border-color: #344954; }
+.instrument dl { border-color: #2a3c46; }
+.instrument dt, .instrument .fine { color: #95a9b6; }
+body[data-mode="play"] .intro h1 { font-size: 26px; }
+body[data-mode="play"] #fly-stage, body[data-mode="play"] #watch-toolbar { display: none; }
+body[data-mode="play"] .workspace { margin-top: 20px; }
+@media (max-width: 1150px) {
+  body:not([data-mode="play"]) .workspace { grid-template-columns: minmax(0,1fr) minmax(0,252px); max-width: 800px; margin: auto; }
+  .instrument { grid-column: 1 / -1; }
+  #neural { max-height: 400px; object-fit: contain; }
+  #fly-scene { aspect-ratio: 1 / 1; }
+}
+@media (max-width: 600px) {
+  body:not([data-mode="play"]) .workspace { grid-template-columns: minmax(0,1fr) minmax(0,.78fr); gap: 12px; padding: 12px; }
+  .panel-heading h2, .instrument h2 { font-size: 15px; }
+  .panel-heading > span { display: none; }
+  #fly-scene { aspect-ratio: 1 / 1.55; }
+  .action-strip { flex-direction: column; gap: 6px; }
+  .stage-note { font-size: 12px; }
+  body:not([data-mode="play"]) .arena-head { flex-wrap: wrap; margin-bottom: 12px; font-size: 12px; }
+  body:not([data-mode="play"]) .arena-head > div { gap: 8px; }
+  .workspace .primary { font-size: 14px; min-width: 86px; padding: 8px 12px; }
+  .workspace #overlay.experiment h2 { font-size: 17px; }
+  .workspace #overlay-copy { font-size: 12px; padding: 5px; }
+  .workspace #end-card { padding: 6px 10px; }
+  .workspace #end-card span { font-size: 13px; }
+  .workspace #end-card b { font-size: 18px; }
+  .mode-note { font-size: 12px; line-height: 1.5; }
+}

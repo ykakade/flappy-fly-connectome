@@ -1,8 +1,12 @@
 import { Environment, RNG } from "./environment.js";
 import { ClassicEnvironment, CLASSIC } from "./classic.js";
 import { Controller } from "./controller.js";
+import { FlyScene } from "./fly-scene.js?v=2";
+import { BrainView } from "./brain-view.js?v=2";
 const $ = (id) => document.getElementById(id),
-  canvas = $("game"), ctx = canvas.getContext("2d"), nc = $("neural").getContext("2d");
+  canvas = $("game"), ctx = canvas.getContext("2d");
+const brain = new BrainView($("neural"), $("neuron-readout"));
+let flyScene;
 const sprites = {};
 const spriteNames = ["background-day", "base", "pipe-green", ...["yellow", "blue"].flatMap(color => ["up", "mid", "down"].map(wing => `${color}bird-${wing}flap`)), ...Array.from({length: 10}, (_, i) => String(i))];
 const spriteReady = Promise.all(spriteNames.map(name => new Promise((resolve, reject) => {
@@ -13,7 +17,7 @@ const spriteReady = Promise.all(spriteNames.map(name => new Promise((resolve, re
   sprites[name] = img;
 })));
 const sounds = Object.fromEntries(["wing", "point", "hit", "die"].map(name => [name, new Audio(`assets/${name}.wav`)]));
-let soundOn = true;
+let soundOn = false;
 function sound(name) {
   if (!soundOn) return;
   const audio = sounds[name];
@@ -21,11 +25,12 @@ function sound(name) {
   audio.play().catch(() => {});
 }
 let graph, checkpoints, report, training,
-  mode = "play", running = false, env = new ClassicEnvironment(10001), other = null,
+  mode = "watch", running = false, env = new Environment(10001), other = null,
   controller = null, reference = null, rng = null, otherRng = null, pending = false,
   activity = [], probability = null, trace = [], otherTrace = [], last = 0,
   accumulator = 0, frameTime = 0, decisionFrame = 0, lastAction = 0, otherAction = 0,
-  deathAt = 0, deathY = 0, deathVelocity = 0, assetsLoaded = false;
+  deathAt = 0, deathY = 0, deathVelocity = 0, assetsLoaded = false,
+  paused = false, speed = 1, runFrame = 0, lastFlapFrame = -Infinity, flapCount = 0, latestSample = null;
 let best = 0;
 function bestKey() { return mode === "play" ? "flappy-fly-classic-best-v1" : "flappy-fly-experiment-best-v1"; }
 function loadBest() {
@@ -33,7 +38,7 @@ function loadBest() {
   try { best = Math.max(0, Number(localStorage.getItem(bestKey())) || 0); } catch {}
   $("best").textContent = best;
 }
-const labels = { play: "Your turn", watch: "Watch the computer", versus: "You vs. computer", journey: "Training", lab: "Change the wiring" };
+const labels = { play: "Your turn", watch: "Fly playing", versus: "You vs. computer", journey: "Training", lab: "Change the wiring" };
 const checkpointNames = { best: "Trained fly wiring", early: "Early training", mid: "Mid-training", untrained: "Before training", shuffled: "Shuffled wiring", mlp: "Standard network", lesion: "Output connections cut", random: "Random strengths", bypass: "Wiring skipped" };
 function seed() {
   const value = Number($("seed").value);
@@ -47,20 +52,25 @@ function refreshController() {
   const a = checkpoints[selectedKey()];
   controller = new Controller(a);
   reference = new Controller(checkpoints.best);
+  brain.update(null, controller);
   $("steps").textContent = a.training_steps.toLocaleString();
   $("eval").textContent = a.evaluation_mean.toFixed(2) + " pipes";
   $("edges").textContent = a.kind === "mlp" ? "N/A" : graph.edges.length.toLocaleString();
   $("node-count").textContent = a.kind === "mlp" ? a.weights["hidden.bias"].length + " units" : graph.nodes.length + " neurons";
-  $("activity-note").textContent = a.kind === "mlp" ? "Each dot is a unit in the network. Color shows its value from -1 to +1." : "Each dot represents a neuron in the model. Hover for its ID. The layout is a diagram, not a brain scan.";
+  $("activity-note").textContent = a.kind === "mlp" ? "Each dot is a unit in the network. Color shows its value from -1 to +1." : "Dots use recorded neuron positions. Lines are model connections, not traced nerve shapes. Color shows values, not measured spikes.";
 }
 function clearActivity() {
-  activity = []; probability = null;
+  activity = []; probability = null; latestSample = null; brain.clear();
   $("prob").textContent = "N/A";
   $("prob-fill").style.width = "0";
   $("activity-status").textContent = "Idle";
 }
 function reset() {
-  running = false; pending = false; accumulator = 0; last = 0; decisionFrame = 0; deathAt = 0;
+  running = false; paused = false; pending = false; runFrame = 0; lastFlapFrame = -Infinity; flapCount = 0;
+  $("pause").textContent = "Pause"; $("pause").setAttribute("aria-pressed", "false");
+  $("press-count").textContent = "0"; $("fly-action").textContent = "Waiting";
+  $("watch-state").textContent = "Ready";
+  accumulator = 0; last = 0; decisionFrame = 0; deathAt = 0;
   env = mode === "play" ? new ClassicEnvironment(seed()) : new Environment(seed(), report?.max_frames || 3600);
   other = ["versus", "lab"].includes(mode) ? new Environment(seed(), report?.max_frames || 3600) : null;
   rng = new RNG(seed() ^ 0xabcdef); otherRng = new RNG(seed() ^ 0xabcdef);
@@ -80,11 +90,11 @@ function reset() {
   $("start").textContent = mode === "play" ? "Play" : "Start";
   $("run-status").textContent = ["play", "versus"].includes(mode) ? "Space, click, or tap to flap" : "Ready";
   $("inference-label").textContent = mode === "play" ? "Human control" : checkpointNames[selectedKey()];
-  $("activity-copy").textContent = "Watch the dots change as the computer decides when to flap.";
+  $("activity-copy").textContent = "Live values and signals from the controller playing this run.";
   $("comparison-results").textContent = "";
   drawChart();
 }
-function start() {
+function start({ focus = true } = {}) {
   if (!assetsLoaded) return;
   if (mode !== "play" && !checkpoints) {
     $("run-status").textContent = "The controller could not load. Try reloading.";
@@ -93,7 +103,8 @@ function start() {
   reset(); running = true;
   pending = ["play", "versus"].includes(mode);
   $("overlay").hidden = true;
-  canvas.focus({preventScroll: true});
+  if (focus) canvas.focus({preventScroll: true});
+  $("watch-state").textContent = "Playing live";
   $("run-status").textContent = "Flying";
   $("activity-status").textContent = mode === "play" ? "Idle" : "Live";
 }
@@ -101,6 +112,8 @@ function changeMode(next) {
   if (!(next in labels)) throw new Error("Unknown mode");
   mode = next;
   document.body.dataset.mode = mode;
+  $("fly-stage").hidden = mode === "play";
+  $("watch-toolbar").hidden = mode === "play";
   document.querySelectorAll("[data-mode]").forEach(b => {
     if (b.tagName !== "BUTTON") return;
     const active = b.dataset.mode === mode;
@@ -119,12 +132,20 @@ function changeMode(next) {
   reset();
 }
 function recordInference(model, state, random, records) {
-  const r = model.forward(state.observation());
+  const observation = state.observation();
+  const r = model.forward(observation, { trace: true });
   const action = +(random.random() < r.probability);
   records.push({frame: state.frame, probability: r.probability, action});
-  return {...r, action};
+  return {...r, action, observation, frame: state.frame};
+}
+function showDecision(result) {
+  latestSample = result;
+  brain.update(result, controller);
+  if (result.action) { lastFlapFrame = runFrame; flapCount++; }
+  $("press-count").textContent = flapCount;
 }
 function finish() {
+  $("watch-state").textContent = "Run finished";
   $("overlay").hidden = false;
   $("overlay").classList.add("game-ended");
   $("overlay").classList.remove("experiment");
@@ -141,7 +162,8 @@ function finish() {
   $("activity-status").textContent = mode === "play" ? "Idle" : "Finished";
 }
 function step() {
-  if (!running) return;
+  if (!running || paused) return;
+  runFrame++;
   const before = env.score, wasDone = env.done;
   if (mode === "play") {
     env.tick(+pending);
@@ -156,7 +178,7 @@ function step() {
         if (mode === "versus") { action = +pending; pending = false; }
         else {
           const r = recordInference(controller, env, rng, trace);
-          action = r.action; activity = r.activity; probability = r.probability;
+          action = r.action; activity = r.activity; probability = r.probability; showDecision(r);
         }
         lastAction = action;
         if (action) sound("wing");
@@ -169,7 +191,7 @@ function step() {
       if (decisionFrame === 0) {
         const r = recordInference(mode === "lab" ? reference : controller, other, otherRng, otherTrace);
         action = r.action; otherAction = action;
-        if (mode === "versus") { activity = r.activity; probability = r.probability; }
+        if (mode === "versus") { activity = r.activity; probability = r.probability; showDecision(r); }
       }
       other.tick(action);
       if (decisionFrame === 3 || other.done) other.previous = otherAction;
@@ -244,101 +266,15 @@ function draw() {
   if (deathAt && frameTime - deathAt < 100 && !matchMedia("(prefers-reduced-motion: reduce)").matches) {
     ctx.fillStyle = "rgba(255,255,255,.65)"; ctx.fillRect(0, 0, 288, 512);
   }
-  if (mode !== "play") drawNeural();
-}
-let positions = [];
-function graphPositions() {
-  if (!graph) return;
-  const ins = new Set(graph.inputs),
-    outs = new Set(graph.outputs);
-  const groups = [
-    graph.inputs,
-    graph.nodes.map((_, i) => i).filter((i) => !ins.has(i) && !outs.has(i)),
-    graph.outputs,
-  ];
-  positions = Array(graph.nodes.length);
-  groups.forEach((nodes, g) =>
-    nodes.forEach((node, j) => {
-      const cols = g === 1 ? 5 : 2,
-        rows = Math.ceil(nodes.length / cols);
-      positions[node] = {
-        x: 30 + g * 180 + (j % cols) * ((g === 1 ? 155 : 35) / cols),
-        y: 20 + Math.floor(j / cols) * (210 / Math.max(rows - 1, 1)),
-      };
-    }),
-  );
-}
-function activityColor(value) {
-  if (value >= 0)
-    return `rgb(${45 + Math.round(value * 152)},${68 + Math.round(value * 175)},${83 + Math.round(value * 35)})`;
-  return `rgb(${45 + Math.round(-value * 68)},${68 + Math.round(-value * 73)},${83 + Math.round(-value * 134)})`;
-}
-function drawNeural() {
-  nc.clearRect(0, 0, 480, 250);
-  if (!graph || !positions.length) return;
-  if (controller?.kind === "mlp" && mode !== "play") {
-    activity.forEach((v, i) => {
-      nc.fillStyle = activityColor(v);
-      nc.beginPath();
-      nc.arc(
-        25 + (i % 10) * 44,
-        25 + Math.floor(i / 10) * 43,
-        5,
-        0,
-        Math.PI * 2,
-      );
-      nc.fill();
-    });
-    return;
+  if (mode !== "play") {
+    brain.draw(runFrame / 60, running && !paused);
+    const pressAge = (runFrame - lastFlapFrame) / 60;
+    flyScene?.update({pressAge, paused});
+    $("fly-action").textContent = !latestSample ? "Waiting" : !running ? "Run finished" : paused ? "Paused" : pressAge < .16 ? "Pressing" : "Released";
+    $("fly-stage").classList.toggle("pressing", running && pressAge < .16);
   }
-  const w = controller?.w;
-  const edgeList = w
-    ? w.src.map((s, e) => [s, w.dst[e]])
-    : graph.edges.map((e) => [e.source_index, e.target_index]);
-  nc.lineWidth = 0.65;
-  for (const [s, t] of edgeList) {
-    if (controller?.intervention === "lesion" && graph.outputs.includes(t))
-      continue;
-    const a = positions[s],
-      b = positions[t];
-    nc.strokeStyle = activity.length
-      ? "rgba(168,202,170,.14)"
-      : "rgba(100,137,160,.14)";
-    nc.beginPath();
-    nc.moveTo(a.x, a.y);
-    nc.lineTo(b.x, b.y);
-    nc.stroke();
-  }
-  positions.forEach((p, i) => {
-    nc.fillStyle = activity.length ? activityColor(activity[i]) : "#486175";
-    nc.beginPath();
-    nc.arc(
-      p.x,
-      p.y,
-      graph.inputs.includes(i) || graph.outputs.includes(i) ? 4 : 3,
-      0,
-      Math.PI * 2,
-    );
-    nc.fill();
-  });
 }
-$("neural").addEventListener("pointermove", (e) => {
-  if (controller?.kind === "mlp") {
-    e.currentTarget.title =
-      "Actual MLP hidden-unit activations; not biological neurons";
-    return;
-  }
-  const r = e.currentTarget.getBoundingClientRect(),
-    x = ((e.clientX - r.left) * 480) / r.width,
-    y = ((e.clientY - r.top) * 250) / r.height;
-  let nearest = positions
-    .map((p, i) => ({ i, d: Math.hypot(x - p.x, y - p.y) }))
-    .sort((a, b) => a.d - b.d)[0];
-  if (nearest && nearest.d < 15) {
-    const n = graph.nodes[nearest.i];
-    e.currentTarget.title = `ID ${n.bodyId} · ${n.type || "untyped"} · ${n.superclass} · activity ${activity[nearest.i]?.toFixed(4) ?? "idle"}`;
-  } else e.currentTarget.title = "All retained neurons; schematic layout";
-});
+function graphPositions() { brain.setGraph(graph); }
 function drawChart() {
   const c = $("prob-chart"),
     cx = c.getContext("2d");
@@ -405,8 +341,8 @@ function loop(t) {
   const delta = Math.min(t - last, 100);
   last = t;
   if (!document.hidden) {
-    if (running) {
-      accumulator += delta;
+    if (running && !paused) {
+      accumulator += delta * speed;
       while (accumulator >= 1000 / 60 && running) { step(); accumulator -= 1000 / 60; }
     } else if (deathAt && $("overlay").hidden) {
       deathVelocity = Math.min(deathVelocity + .5 * delta / (1000 / 60), 10);
@@ -418,8 +354,18 @@ function loop(t) {
   requestAnimationFrame(loop);
 }
 requestAnimationFrame(loop);
-$("start").addEventListener("click", start);
-$("reset").addEventListener("click", reset);
+$("start").addEventListener("click", () => start());
+$("reset").addEventListener("click", () => { if (mode === "play") reset(); else start({focus:false}); });
+$("pause").addEventListener("click", () => {
+  if (!running) { start({focus:false}); return; }
+  paused = !paused; last = 0; accumulator = 0;
+  $("pause").textContent = paused ? "Resume" : "Pause";
+  $("pause").setAttribute("aria-pressed", String(paused));
+  $("watch-state").textContent = paused ? "Paused" : "Playing live";
+  $("activity-status").textContent = paused ? "Paused" : "Live";
+});
+$("speed").addEventListener("change", () => { speed = Number($("speed").value); accumulator = 0; });
+$("brain-pass").addEventListener("change", () => { brain.pass = Number($("brain-pass").value); });
 $("sound").addEventListener("click", () => {
   soundOn = !soundOn;
   $("sound").textContent = soundOn ? "Sound on" : "Sound off";
@@ -483,14 +429,30 @@ async function load() {
     document.querySelectorAll('button[data-mode]:not([data-mode="play"])').forEach(b => b.disabled = true);
   }
 }
-reset();
-spriteReady.then(() => { assetsLoaded = true; }).catch(() => {
+changeMode(mode);
+const flyReady = (async () => {
+  try {
+    flyScene = new FlyScene($("fly-scene"));
+    await flyScene.load();
+    $("fly-loading").hidden = true;
+  } catch (error) {
+    $("fly-loading").textContent = "The 3D fly could not load. The game and brain view still work.";
+    console.error(error);
+  }
+})();
+const artReady = spriteReady.then(() => { assetsLoaded = true; }).catch(() => {
   $("run-status").textContent = "Game art could not load. Please reload.";
   $("start").disabled = true;
 });
-load();
+const controllerReady = load();
+Promise.all([artReady, controllerReady, flyReady]).then(() => {
+  if (mode === "watch" && !running && assetsLoaded && checkpoints) start({focus:false});
+});
 window.flappyFly = {
-  getState: () => ({ mode, running, seed: seed(), score: env.score, otherScore: other?.score,
+  getState: () => ({ mode, running, paused, speed, runFrame, flapCount, lastFlapFrame,
+    flyReady: !!flyScene?.ready, buttonContact: flyScene?.contact || 0,
+    decision: latestSample && {action:latestSample.action, frame:latestSample.frame, observation:latestSample.observation, edgeActivity:latestSample.edgeActivity, passes:latestSample.passes},
+    seed: seed(), score: env.score, otherScore: other?.score,
     frame: env.frame, y: env.y, vy: env.vy, done: env.done, pipes: env.pipes.map(p => ({...p})),
     probability, activity: activity.slice(), controller: selectedKey(), ready: assetsLoaded && !!checkpoints }),
   setMode: changeMode, start, reset,

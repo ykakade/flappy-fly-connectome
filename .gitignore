@@ -15,4 +15,5 @@ data/cache/
 .openai/*token*
 node_modules/
 .deploy/
+.wrangler/
 .DS_Store
